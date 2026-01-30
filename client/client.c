@@ -19,50 +19,39 @@ void* client_thread(void* arg) {
     char buffer[BUFFER_SIZE];
     ssize_t bytes_sent, bytes_received, total_sent;
 
-    // create tcp socket
     sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror("socket failed");
-        return NULL;
-    }
+    if (sock < 0) { perror("socket failed"); return NULL; }
 
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT);
     server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
-    // connect to server
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("connect failed");
-        close(sock);
-        return NULL;
+        perror("connect failed"); close(sock); return NULL;
     }
 
-    // send message (handle partial sends)
-    size_t msg_len = strlen(message);
-    total_sent = 0;
-    while (total_sent < msg_len) {
-        bytes_sent = send(sock, message + total_sent, msg_len - total_sent, 0);
-        if (bytes_sent < 0) {
-            perror("send failed");
-            close(sock);
-            return NULL;
+    for (int i = 0; i < 3; i++) { // send the message 3 times
+        size_t msg_len = strlen(message);
+        total_sent = 0;
+        while (total_sent < msg_len) {
+            bytes_sent = send(sock, message + total_sent, msg_len - total_sent, 0);
+            if (bytes_sent < 0) { perror("send failed"); close(sock); return NULL; }
+            total_sent += bytes_sent;
         }
-        total_sent += bytes_sent;
-    }
 
-    // receive response (handle partial recv)
-    bytes_received = recv(sock, buffer, BUFFER_SIZE, 0);
-    if (bytes_received < 0) {
-        perror("recv failed");
-    } else {
-        buffer[bytes_received] = '\0'; // null terminate
-        printf("thread %ld received: %s\n", pthread_self(), buffer);
+        bytes_received = recv(sock, buffer, BUFFER_SIZE, 0);
+        if (bytes_received < 0) { perror("recv failed"); break; }
+        else {
+            buffer[bytes_received] = '\0';
+            printf("thread %ld received: %s\n", pthread_self(), buffer);
+        }
     }
 
     close(sock);
     return NULL;
 }
+
 
 int main() {
     pthread_t threads[NUM_CLIENTS];
