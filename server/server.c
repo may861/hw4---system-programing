@@ -15,30 +15,62 @@ int connected_clients = 0;
 // Mutex to protect the client counter 
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// thread function to handle a single client 
+#define BUFFER_SIZE 4096
+
+// thread function to handle a single client
 void* handle_client(void* arg) {
     int client_fd = *(int*)arg;
     free(arg);
+    char buffer[BUFFER_SIZE];
+    ssize_t bytes_received, bytes_sent, total_sent;
 
-    //enter critical section 
+    // increment client counter in critical section
     pthread_mutex_lock(&clients_mutex);
     connected_clients++;
-    printf("Client connected. Active clients: %d\n", connected_clients);
+    printf("client connected. active clients: %d\n", connected_clients);
     pthread_mutex_unlock(&clients_mutex);
-    //exit critical section 
 
-    //  close 
+    while (1) {
+        // receive data from client
+        bytes_received = recv(client_fd, buffer, BUFFER_SIZE, 0);
+        if (bytes_received < 0) {
+            perror("recv failed");
+            break;
+        } else if (bytes_received == 0) {
+            // client closed connection
+            break;
+        }
+
+        // convert lowercase letters to uppercase
+        for (ssize_t i = 0; i < bytes_received; i++) {
+            if (buffer[i] >= 'a' && buffer[i] <= 'z') {
+                buffer[i] = buffer[i] - 'a' + 'A';
+            }
+        }
+
+        // send back to client (handle partial sends)
+        total_sent = 0;
+        while (total_sent < bytes_received) {
+            bytes_sent = send(client_fd, buffer + total_sent, bytes_received - total_sent, 0);
+            if (bytes_sent < 0) {
+                perror("send failed");
+                break;
+            }
+            total_sent += bytes_sent;
+        }
+    }
+
     close(client_fd);
 
-    //enter critical section 
+    // decrement client counter in critical section
     pthread_mutex_lock(&clients_mutex);
     connected_clients--;
-    printf("Client disconnected. Active clients: %d\n", connected_clients);
+    printf("client disconnected. active clients: %d\n", connected_clients);
     pthread_mutex_unlock(&clients_mutex);
-    //exit critical section 
 
     return NULL;
 }
+
 
 int main() {
     int server_fd;
